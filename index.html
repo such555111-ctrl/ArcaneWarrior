@@ -619,7 +619,41 @@ const firstImage = p => (p.images && p.images.length) ? p.images[0] : (p.image |
 const slideBg = (url, p) => url ? `background-image:url('${url}');background-size:cover;background-position:center;` : `background:${SWATCHES[p.swatch % SWATCHES.length]};`;
 const media = p => slideBg(firstImage(p), p);
 
-let PRODUCTS = [];
+// --- каталог: порционная загрузка -------------------------------------
+// productsById — кэш всех когда-либо загруженных товаров (по id), нужен для
+// открытия карточки, избранного и т.д. независимо от того, догружен ли
+// каталог до этого товара.
+const productsById = new Map();
+// CATALOG — товары текущей страницы/фильтра, уже отрисованные в сетке, в
+// порядке отображения (для клика по стрелкам смены фото на карточке).
+let CATALOG = [];
+let ALL_CATEGORIES = ['Все'];
+let catalogPage = 0;
+let catalogHasMore = true;
+let catalogLoading = false;
+const PAGE_SIZE = 24;
+
+function cacheProducts(list){
+  list.forEach(p => productsById.set(p.id, p));
+}
+
+async function fetchProductsPage(page){
+  const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
+  if (activeCategory !== 'Все') params.set('category', activeCategory);
+  if (sortMode === 'price_asc' || sortMode === 'price_desc') params.set('sort', sortMode);
+  const res = await fetch(`/api/products?${params.toString()}`);
+  if (!res.ok) throw new Error('products fetch failed');
+  return res.json();
+}
+
+async function fetchProductsByIds(ids){
+  if (!ids.length) return [];
+  const res = await fetch(`/api/products/by-ids?ids=${ids.join(',')}`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.products || [];
+}
+
 let cart = [];
 let appliedPromo = null; // { code, type, value }
 let promoFormOpen = false;
@@ -641,7 +675,6 @@ function isFav(id){ return favorites.has(id); }
 
 function toggleFavorite(id, opts){
   opts = opts || {};
-  const p = PRODUCTS.find(x=>x.id===id);
   const willAdd = !favorites.has(id);
   if (willAdd) favorites.add(id); else favorites.delete(id);
   saveFavorites();
@@ -717,8 +750,7 @@ function renderTicker(){
 }
 
 function renderFilters(){
-  const cats = ['Все', ...new Set(PRODUCTS.map(p => p.category))];
-  filtersEl.innerHTML = cats.map(c =>
+  filtersEl.innerHTML = ALL_CATEGORIES.map(c =>
     `<button class="chip ${c===activeCategory?'active':''}" data-cat="${c}">${c}</button>`
   ).join('');
   filtersEl.querySelectorAll('.chip').forEach(btn=>{
@@ -726,7 +758,7 @@ function renderFilters(){
       if (btn.dataset.cat === activeCategory) return;
       activeCategory = btn.dataset.cat;
       renderFilters();
-      renderGrid();
+      resetAndLoadCatalog();
     };
   });
 }
@@ -779,7 +811,7 @@ function attachCardHandlers(container){
     btn.onclick = (e) => {
       e.stopPropagation();
       const card = btn.closest('.card');
-      const p = PRODUCTS.find(x=>x.id===Number(btn.dataset.id));
+      const p = productsById.get(Number(btn.dataset.id));
       const imgs = (p.images && p.images.length) ? p.images : (p.image ? [p.image] : []);
       if (!imgs.length) return;
       let idx = Number(card.dataset.imgIndex || 0);
@@ -790,13 +822,6 @@ function attachCardHandlers(container){
       card.querySelectorAll('.card-dot').forEach((d,di)=>d.classList.toggle('active', di===idx));
     };
   });
-}
-
-function applySort(list){
-  const sorted = list.slice();
-  if (sortMode==='price_asc') sorted.sort((a,b)=>a.price-b.price);
-  else if (sortMode==='price_desc') sorted.sort((a,b)=>b.price-a.price);
-  return sorted;
 }
 
 const sortBtn = document.getElementById('sortBtn');
@@ -814,30 +839,121 @@ sortMenu.querySelectorAll('.sort-opt').forEach(opt=>{
     sortMenu.querySelectorAll('.sort-opt').forEach(o=>o.classList.toggle('active', o===opt));
     sortBtn.classList.toggle('active', sortMode!=='default');
     sortMenu.classList.remove('open');
-    renderGrid();
+    resetAndLoadCatalog();
   };
 });
 
-function renderGrid(){
-  let list = activeCategory==='Все' ? PRODUCTS : PRODUCTS.filter(p=>p.category===activeCategory);
-  list = applySort(list);
+function renderGridInitial(){
+  // Полная перерисовка сетки (смена категории/сортировки или первая загрузка).
   grid.style.opacity = '0';
   grid.style.transform = 'translateY(6px)';
   setTimeout(()=>{
-    if (list.length===0){
+    if (CATALOG.length===0){
       grid.innerHTML = emptyStateHTML;
     } else {
-      grid.innerHTML = list.map((p,i) => cardHTML(p,i)).join('');
+      grid.innerHTML = CATALOG.map((p,i) => cardHTML(p,i)).join('');
       attachCardHandlers(grid);
     }
+    ensureCatalogSentinel();
     grid.style.opacity = '1';
     grid.style.transform = 'translateY(0)';
   }, 140);
 }
 
-function renderFavorites(){
+function appendGridItems(newItems, startIndex){
+  // Добавляет только новые карточки (подгрузка следующей страницы), не
+  // перерисовывая уже показанные — чтобы не дёргать скролл.
+  const frag = document.createElement('div');
+  frag.innerHTML = newItems.map((p,i) => cardHTML(p, startIndex+i)).join('');
+  const cards = Array.from(frag.children);
+  cards.forEach(card => grid.appendChild(card));
+  attachCardHandlers(grid);
+  ensureCatalogSentinel();
+}
+
+// Невидимый маркер в конце сетки — когда он попадает во вьюпорт, подгружаем
+// следующую страницу каталога.
+let catalogSentinel = null;
+let catalogObserver = null;
+function ensureCatalogSentinel(){
+  if (!catalogSentinel){
+    catalogSentinel = document.createElement('div');
+    catalogSentinel.id = 'catalogSentinel';
+    catalogSentinel.style.cssText = 'grid-column:1/-1;height:1px;';
+  }
+  grid.appendChild(catalogSentinel);
+  if (!catalogObserver){
+    catalogObserver = new IntersectionObserver((entries)=>{
+      if (entries.some(e=>e.isIntersecting)) loadNextCatalogPage();
+    }, { rootMargin: '600px 0px' });
+  }
+  catalogObserver.observe(catalogSentinel);
+}
+
+function showCatalogLoadingRow(show){
+  let row = document.getElementById('catalogLoadingRow');
+  if (show){
+    if (!row){
+      row = document.createElement('div');
+      row.id = 'catalogLoadingRow';
+      row.style.cssText = 'grid-column:1/-1;text-align:center;padding:16px 0;opacity:.6;font-size:13px;';
+      row.textContent = 'Загружаем ещё…';
+      grid.appendChild(row);
+    }
+  } else if (row){
+    row.remove();
+  }
+}
+
+async function loadNextCatalogPage(){
+  if (catalogLoading || !catalogHasMore) return;
+  catalogLoading = true;
+  showCatalogLoadingRow(true);
+  try {
+    const data = await fetchProductsPage(catalogPage + 1);
+    cacheProducts(data.products);
+    const startIndex = CATALOG.length;
+    CATALOG = CATALOG.concat(data.products);
+    catalogPage = data.current_page;
+    catalogHasMore = data.has_more;
+    if (Array.isArray(data.categories) && data.categories.length){
+      ALL_CATEGORIES = ['Все', ...data.categories];
+      renderFilters();
+    }
+    showCatalogLoadingRow(false);
+    if (startIndex===0){
+      renderGridInitial();
+    } else {
+      appendGridItems(data.products, startIndex);
+    }
+  } catch(e){
+    showCatalogLoadingRow(false);
+    if (CATALOG.length===0) grid.innerHTML = emptyStateHTML;
+  } finally {
+    catalogLoading = false;
+  }
+}
+
+async function resetAndLoadCatalog(){
+  catalogPage = 0;
+  catalogHasMore = true;
+  CATALOG = [];
+  if (catalogObserver && catalogSentinel) catalogObserver.unobserve(catalogSentinel);
+  catalogSentinel = null;
+  await loadNextCatalogPage();
+}
+
+async function renderFavorites(){
   const favGrid = document.getElementById('favGrid');
-  const list = PRODUCTS.filter(p=>favorites.has(p.id));
+  const ids = [...favorites];
+  const missingIds = ids.filter(id => !productsById.has(id));
+  if (missingIds.length){
+    // Избранный товар мог быть добавлен со страницы каталога, которая ещё
+    // не подгружалась в этой сессии — дозапрашиваем такие товары точечно.
+    const fetched = await fetchProductsByIds(missingIds);
+    cacheProducts(fetched);
+  }
+  const list = ids.map(id => productsById.get(id)).filter(Boolean);
   if (list.length===0){
     favGrid.innerHTML = `<div class="favs-empty">
       <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M12 20.5s-7.6-4.6-10-9.1C.5 8 2 4.7 5.3 4.1c2-.4 3.9.5 5 2.2 1.1-1.7 3-2.6 5-2.2C18.6 4.7 20 8 19.6 9c-2 4.9-7.6 11.5-7.6 11.5Z"/></svg>
@@ -932,7 +1048,7 @@ document.getElementById('pdArrowR').onclick = (e) => { e.stopPropagation(); goTo
 })();
 
 function openProduct(id){
-  currentProduct = PRODUCTS.find(p=>p.id===id);
+  currentProduct = productsById.get(id);
   const p = currentProduct;
   renderGallery(p);
   document.getElementById('pdCat').textContent = p.category;
@@ -1520,11 +1636,9 @@ document.querySelectorAll('.sheet').forEach(sheet=>{
 
 updateFavBadge();
 
-fetch('products.json').then(r=>r.json()).then(data=>{
-  PRODUCTS = data;
-  renderTicker();
-  renderFilters();
-  renderGrid();
+renderTicker();
+renderFilters();
+resetAndLoadCatalog().then(()=>{
   skeletonGrid.style.display = 'none';
   grid.style.display = 'grid';
 }).catch(()=>{

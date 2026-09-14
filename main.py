@@ -252,6 +252,85 @@ def products():
     return send_from_directory(APP_DIR, "products.json")
 
 
+@app.route("/api/products", methods=["GET"])
+def api_products():
+    """Порционная (пагинированная) выдача товаров.
+
+    Query-параметры:
+      page     — номер страницы, по умолчанию 1
+      limit    — товаров на страницу, по умолчанию 20
+      category — фильтр по точному совпадению категории (опционально)
+      search   — поиск по подстроке в названии, без учёта регистра (опционально)
+      sort     — 'price_asc' | 'price_desc' (опционально, по умолчанию — как в файле)
+    """
+    try:
+        page = int(request.args.get("page", 1))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        limit = int(request.args.get("limit", 20))
+    except (TypeError, ValueError):
+        limit = 20
+
+    page = max(page, 1)
+    limit = min(max(limit, 1), 200)  # защита от limit=0 или огромных значений
+
+    category = (request.args.get("category") or "").strip()
+    search = (request.args.get("search") or "").strip().lower()
+    sort = (request.args.get("sort") or "").strip()
+
+    all_items = load_products()
+
+    # Полный список категорий отдаём всегда (не только по текущему фильтру) —
+    # чтобы фронтенд мог построить фильтры, не загружая весь каталог целиком.
+    categories = sorted({p.get("category") or "" for p in all_items if p.get("category")})
+
+    items = all_items
+    if category:
+        items = [p for p in items if (p.get("category") or "") == category]
+    if search:
+        items = [p for p in items if search in (p.get("name") or "").lower()]
+
+    if sort == "price_asc":
+        items = sorted(items, key=lambda p: p.get("price") or 0)
+    elif sort == "price_desc":
+        items = sorted(items, key=lambda p: p.get("price") or 0, reverse=True)
+
+    total_items = len(items)
+    total_pages = max((total_items + limit - 1) // limit, 1)
+    page = min(page, total_pages)
+
+    start = (page - 1) * limit
+    end = start + limit
+    page_items = items[start:end]
+
+    return jsonify({
+        "products": page_items,
+        "current_page": page,
+        "total_pages": total_pages,
+        "has_more": page < total_pages,
+        "total_items": total_items,
+        "categories": categories,
+    })
+
+
+@app.route("/api/products/by-ids", methods=["GET"])
+def api_products_by_ids():
+    """Отдаёт конкретные товары по списку id (для экрана «Избранное»:
+    там может быть товар со страницы каталога, которая ещё не подгружена)."""
+    raw = (request.args.get("ids") or "").strip()
+    if not raw:
+        return jsonify({"products": []})
+    try:
+        ids = {int(x) for x in raw.split(",") if x.strip()}
+    except ValueError:
+        abort(400, description="ids должен быть списком чисел через запятую")
+
+    items = load_products()
+    found = [p for p in items if p.get("id") in ids]
+    return jsonify({"products": found})
+
+
 @app.route("/api/order", methods=["POST"])
 def create_order():
     data = request.get_json(force=True, silent=True) or {}
