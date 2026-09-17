@@ -10,16 +10,16 @@
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;800;900&family=Rajdhani:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg-primary:#0A0908;
-    --bg-card:#131110;
-    --bg-card-hover:#1C1917;
-    --accent-color:#FFC72C;
-    --accent-hover:#E6A800;
-    --accent-neon:#FFE066;
-    --accent-glow:rgba(255,199,44,.15);
-    --text-primary:#F0F0F0;
-    --text-secondary:#9A9186;
-    --border-color:#262019;
+    --bg-primary:#F8F9FA;
+    --bg-card:#FFFFFF;
+    --bg-card-hover:#F3F4F6;
+    --accent-color:#C9A227;
+    --accent-hover:#A9871F;
+    --accent-neon:#B8860B;
+    --accent-glow:rgba(201,162,39,.12);
+    --text-primary:#111111;
+    --text-secondary:#5B6169;
+    --border-color:#E5E7EB;
     --border-radius-card:16px;
     --border-radius-btn:12px;
     --font-heading:'Rajdhani',sans-serif;
@@ -30,14 +30,16 @@
     --bg-elev-2:var(--bg-card-hover);
     --text:var(--text-primary);
     --muted:var(--text-secondary);
-    --muted-dim:#6B6255;
+    --muted-dim:#9CA3AF;
     --accent:var(--accent-color);
     --accent-soft:var(--accent-neon);
-    --accent-dim:rgba(255,199,44,.12);
+    --accent-dim:rgba(201,162,39,.10);
     --line:var(--border-color);
-    --line-soft:rgba(148,163,184,.06);
-    --danger:#FF6B6B;
-    --ok:#6BCB77;
+    --line-soft:rgba(17,17,17,.05);
+    --danger:#E23F3F;
+    --ok:#2E9E52;
+    --btn-dark:#111111;
+    --btn-dark-hover:#000000;
     --ease:cubic-bezier(.22,1,.36,1);
     --ease-sheet:cubic-bezier(.26,1.06,.34,1);
     --ease-spring:cubic-bezier(.34,1.56,.64,1);
@@ -362,7 +364,105 @@
     .chip:hover:not(.active){color:var(--text);border-color:var(--muted-dim);}
     .card-like:hover:not(.active){border-color:var(--accent);}
   }
-</style></style>
+
+  /* ===== LIGHT THEME OVERRIDES (arcanewarrior.ru style) ===== */
+  body::before{
+    background:
+      radial-gradient(ellipse 80% 50% at 20% 40%, rgba(201,162,39,.05), transparent 60%),
+      radial-gradient(ellipse 60% 40% at 80% 80%, rgba(201,162,39,.03), transparent 50%),
+      radial-gradient(ellipse 50% 50% at 50% 0%, rgba(184,134,11,.02), transparent 50%);
+  }
+  .orb-1{background:rgba(201,162,39,.05);}
+  .orb-2{background:rgba(201,162,39,.04);}
+  .orb-3{background:rgba(184,134,11,.04);}
+
+  /* Header / ticker / sort menu translucent panels */
+  header{
+    background:rgba(255,255,255,.85);
+    box-shadow:0 1px 0 rgba(17,17,17,.04);
+  }
+  header.scrolled{box-shadow:0 4px 24px rgba(17,17,17,.06);}
+  .ticker-wrap{background:rgba(248,249,250,.9);}
+  .sort-menu{
+    background:rgba(255,255,255,.98);
+    box-shadow:0 20px 50px rgba(17,17,17,.12);
+  }
+
+  /* Product cards — white bg, thin border, soft hover shadow (пункт 3) */
+  .card-media{
+    background-color:#FFFFFF;
+    border:1px solid var(--border-color);
+    box-shadow:0 1px 3px rgba(17,17,17,.04);
+  }
+  .card:hover .card-media{
+    box-shadow:0 8px 24px rgba(17,17,17,.08);
+    border-color:#D8DBE0;
+  }
+  .card-media::after{
+    background:linear-gradient(180deg,transparent 55%,rgba(0,0,0,.55) 100%);
+  }
+
+  /* Sheets / modals / cart — light bg with dark text (пункт 5) */
+  .sheet{
+    background:#FFFFFF;
+    border-top:1px solid var(--border-color);
+    box-shadow:0 -20px 60px rgba(17,17,17,.12);
+  }
+  .backdrop{background:rgba(17,17,17,.45);}
+  .pd-gallery{background-color:#F3F4F6;border:1px solid var(--border-color);}
+
+  /* Floating icon buttons over photos (like/arrows) — light glass instead of dark glass */
+  .pd-arrow,.card-arrow,.pd-like,.card-like{
+    background:rgba(255,255,255,.85);
+    border:1px solid rgba(17,17,17,.08);
+    color:#111111;
+  }
+  .pd-arrow:hover,.card-arrow:hover{background:rgba(255,255,255,1);}
+  .lightbox-close,.lightbox-arrow{
+    background:rgba(255,255,255,.12);
+    border:1px solid rgba(255,255,255,.25);
+  }
+  /* Lightbox (fullscreen photo viewer) stays dark on purpose — standard UX for image zoom */
+
+  /* Buttons — строгий тёмный/чёрный премиальный стиль (пункт 4) */
+  .btn-primary{
+    background:linear-gradient(135deg,var(--btn-dark),var(--btn-dark-hover));
+    color:#FFFFFF;
+    box-shadow:0 8px 20px rgba(17,17,17,.18);
+  }
+  .btn-primary:hover:not(:disabled){
+    box-shadow:0 10px 26px rgba(17,17,17,.24);
+  }
+  .btn-primary:disabled{background:#E5E7EB;color:#9CA3AF;}
+  .btn-secondary{color:var(--text-secondary);border-color:var(--border-color);}
+  .btn-secondary:hover{color:#111111;border-color:#111111;background:rgba(17,17,17,.04);}
+
+  /* Chips / filters / sort button on light bg */
+  .chip{background:#FFFFFF;color:var(--text-secondary);border-color:var(--border-color);}
+  .chip.active{border-color:#111111;color:#111111;background:#F3F4F6;}
+  .sort-btn{background:#FFFFFF;border-color:var(--border-color);color:var(--text-secondary);}
+  .sort-btn.active{border-color:#111111;color:#111111;background:#F3F4F6;box-shadow:none;}
+  .filters-arrow{background:#FFFFFF;border-color:var(--border-color);}
+
+  /* Inputs */
+  .text-input,.promo-input-wrap{background:#FFFFFF;border-color:var(--border-color);color:#111111;}
+  .promo-apply-btn{background:#F3F4F6;color:#111111;border-left-color:var(--border-color);}
+  .promo-apply-btn:hover:not(:disabled){background:#111111;color:#FFFFFF;}
+  .size-btn{background:#FFFFFF;color:#111111;border-color:var(--border-color);}
+  .size-btn.active{border-color:#111111;color:#111111;background:#F3F4F6;box-shadow:none;}
+
+  /* Toast notifications */
+  .toast{
+    background:rgba(255,255,255,.98);
+    border:1px solid var(--border-color);
+    color:#111111;
+    box-shadow:0 12px 32px rgba(17,17,17,.14);
+  }
+
+  /* Misc cards on light bg */
+  .profile-user,.order-card,.test-badge{background:#FFFFFF;border-color:var(--border-color);}
+  .icon-btn{background:#FFFFFF;border-color:var(--border-color);color:#111111;}
+</style>
 </head>
 <body>
 <div class="orb orb-1"></div>
